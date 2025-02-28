@@ -10,13 +10,18 @@ import {
   ButtonGroup,
   Snackbar,
   Tooltip,
+  CircularProgress,
+  Collapse,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import StopIcon from '@mui/icons-material/Stop';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 
 const ChatInterface = () => {
   // 从本地存储加载初始状态
@@ -40,7 +45,11 @@ const ChatInterface = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [currentTypingIndex, setCurrentTypingIndex] = useState(-1);
   const [displayedText, setDisplayedText] = useState('');
+  const [displayedReasoning, setDisplayedReasoning] = useState('');
+  const [isTypingReasoning, setIsTypingReasoning] = useState(false);
   const messagesEndRef = useRef(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const abortController = useRef(null);
 
   // 保存状态到本地存储
   useEffect(() => {
@@ -59,22 +68,67 @@ const ChatInterface = () => {
   useEffect(() => {
     if (currentTypingIndex >= 0 && currentTypingIndex < messages.length) {
       const message = messages[currentTypingIndex];
-      if (!message.isUser && message.text !== displayedText) {
+      if (!message.isUser) {
         let index = 0;
-        const text = message.text;
-        const interval = setInterval(() => {
-          if (index <= text.length) {
-            setDisplayedText(text.slice(0, index));
-            index++;
-          } else {
-            clearInterval(interval);
-            setCurrentTypingIndex(-1);
-          }
-        }, 30);
-        return () => clearInterval(interval);
+        const typingInterval = 30; // 打字速度（毫秒）
+        
+        if (message.isR1 && message.reasoningContent && !isTypingReasoning) {
+          // 先显示推理内容
+          const reasoningText = message.reasoningContent;
+          const timer = setInterval(() => {
+            if (index <= reasoningText.length) {
+              setDisplayedReasoning(reasoningText.slice(0, index));
+              index++;
+            } else {
+              clearInterval(timer);
+              setIsTypingReasoning(true);
+              index = 0; // 重置索引，准备显示最终答案
+            }
+          }, typingInterval);
+
+          return () => {
+            clearInterval(timer);
+            setDisplayedReasoning(reasoningText);
+          };
+        } else if (message.isR1 && isTypingReasoning) {
+          // 显示最终答案
+          const text = message.text;
+          const timer = setInterval(() => {
+            if (index <= text.length) {
+              setDisplayedText(text.slice(0, index));
+              index++;
+            } else {
+              clearInterval(timer);
+              setCurrentTypingIndex(-1);
+              setIsTypingReasoning(false);
+            }
+          }, typingInterval);
+
+          return () => {
+            clearInterval(timer);
+            setDisplayedText(text);
+          };
+        } else {
+          // 非 R1 消息的正常显示
+          const text = message.text;
+          const timer = setInterval(() => {
+            if (index <= text.length) {
+              setDisplayedText(text.slice(0, index));
+              index++;
+            } else {
+              clearInterval(timer);
+              setCurrentTypingIndex(-1);
+            }
+          }, typingInterval);
+
+          return () => {
+            clearInterval(timer);
+            setDisplayedText(text);
+          };
+        }
       }
     }
-  }, [currentTypingIndex, messages, displayedText]);
+  }, [currentTypingIndex, messages, isTypingReasoning]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -106,7 +160,7 @@ const ChatInterface = () => {
       const userMessage = messages[index - 1];
       if (!userMessage || !userMessage.isUser) return;
 
-      let endpoint = '/api/chat';
+      let endpoint = 'http://localhost:3001/api/chat';
       if (deepThinking && webSearch) {
         endpoint += '/deepseek-r1-bing';
       } else if (!deepThinking && !webSearch) {
@@ -136,23 +190,33 @@ const ChatInterface = () => {
     }
   };
 
+  const handleStopGeneration = () => {
+    if (abortController.current) {
+      abortController.current.abort();
+      setIsGenerating(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
 
     const newMessages = [...messages, { text: inputMessage, isUser: true }];
-    setMessages(newMessages);
+    setMessages([...newMessages, { text: '', isUser: false, loading: true }]);
     setInputMessage('');
+    setIsGenerating(true);
 
     try {
-      let endpoint = '/api/chat';
+      abortController.current = new AbortController();
+      
+      let endpoint = 'http://localhost:3001/api/chat/';
       if (deepThinking && webSearch) {
-        endpoint += '/deepseek-r1-bing';
-      } else if (!deepThinking && !webSearch) {
-        endpoint += '/deepseek-v3';
+        endpoint += 'deepseek-r1-search';
       } else if (deepThinking) {
-        endpoint += '/deepseek-r1';
+        endpoint += 'deepseek-r1';
+      } else if (webSearch) {
+        endpoint += 'deepseek-v3-search';
       } else {
-        endpoint += '/deepseek-v3-bing';
+        endpoint += 'deepseek-v3';
       }
 
       const response = await fetch(endpoint, {
@@ -161,28 +225,253 @@ const ChatInterface = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message: inputMessage }),
+        signal: abortController.current.signal
       });
 
       const data = await response.json();
-      const aiMessage = { text: data.response, isUser: false };
-      setMessages([...newMessages, aiMessage]);
-      setCurrentTypingIndex(newMessages.length);
-      setDisplayedText('');
+      if (data.success) {
+        const aiMessage = {
+          text: data.response,
+          isUser: false,
+          isR1: deepThinking,
+          reasoningContent: data.reasoning_content,
+          showReasoning: true, // 默认展开推理内容
+        };
+        setMessages([...newMessages, aiMessage]);
+        setCurrentTypingIndex(newMessages.length);
+        setDisplayedText('');
+      } else {
+        throw new Error(data.error);
+      }
     } catch (error) {
-      console.error('Error:', error);
-      setMessages([
-        ...newMessages,
-        { text: '内容由 AI 生成，请仔细甄别', isUser: false },
-      ]);
+      if (error.name === 'AbortError') {
+        setMessages([...newMessages, { text: '回答已终止。', isUser: false }]);
+      } else {
+        console.error('Error:', error);
+        setMessages([...newMessages, { text: '发送消息失败，请重试。', isUser: false }]);
+      }
+    } finally {
+      setIsGenerating(false);
+      abortController.current = null;
     }
+  };
+
+  const toggleReasoning = (index) => {
+    setMessages(messages.map((msg, i) => 
+      i === index ? { ...msg, showReasoning: !msg.showReasoning } : msg
+    ));
   };
 
   const renderMessageText = (message, index) => {
     if (message.isUser) {
       return message.text;
     }
+    
+    if (message.isR1 && message.reasoningContent) {
+      if (index === currentTypingIndex) {
+        if (!isTypingReasoning) {
+          return '';
+        } else {
+          return displayedText;
+        }
+      }
+      return message.text;
+    }
+    
     return index === currentTypingIndex ? displayedText : message.text;
   };
+
+  const renderReasoningContent = (message, index) => {
+    if (index === currentTypingIndex && !isTypingReasoning) {
+      return displayedReasoning;
+    }
+    return message.reasoningContent;
+  };
+
+  const renderMessage = (message, index) => (
+    <Box
+      key={index}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: message.isUser ? 'flex-end' : 'flex-start',
+        mb: 3,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          flexDirection: message.isUser ? 'row-reverse' : 'row',
+          width: '100%',
+        }}
+      >
+        {!message.isUser && (
+          <Box
+            sx={{
+              position: 'relative',
+              width: 32,
+              height: 32,
+              mr: message.isUser ? 0 : 2,
+              ml: message.isUser ? 2 : 0,
+            }}
+          >
+            <Box
+              component="img"
+              src="/deepseek-color.png"
+              alt="AI"
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                opacity: message.loading ? 0.5 : 1,
+              }}
+            />
+            {message.loading && (
+              <CircularProgress
+                size={32}
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  color: '#1d4ed8',
+                }}
+              />
+            )}
+          </Box>
+        )}
+        {message.isUser && (
+          <Box
+            component="img"
+            src="/user-avatar.png"
+            alt="User"
+            sx={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              mr: message.isUser ? 2 : 0,
+              ml: message.isUser ? 0 : 2,
+            }}
+          />
+        )}
+        <Box sx={{ display: 'flex', flexDirection: 'column', maxWidth: '80%' }}>
+          {!message.isUser && message.isR1 && message.reasoningContent && (
+            <Paper
+              sx={{
+                p: 2,
+                mb: index === currentTypingIndex && !isTypingReasoning ? 0 : 1,
+                bgcolor: '#f3f4f6',
+                borderRadius: 2,
+                border: '1px solid #e5e7eb',
+                position: 'relative',
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                }}
+                onClick={() => toggleReasoning(index)}
+              >
+                <Typography
+                  variant="subtitle2"
+                  sx={{ color: '#4b5563', fontWeight: 600 }}
+                >
+                  已深度思考
+                </Typography>
+                <IconButton size="small">
+                  {message.showReasoning ? (
+                    <ExpandLessIcon fontSize="small" />
+                  ) : (
+                    <ExpandMoreIcon fontSize="small" />
+                  )}
+                </IconButton>
+              </Box>
+              <Collapse in={message.showReasoning}>
+                <Typography
+                  sx={{
+                    mt: 1,
+                    color: '#4b5563',
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {renderReasoningContent(message, index)}
+                </Typography>
+              </Collapse>
+            </Paper>
+          )}
+          {(!message.isR1 || isTypingReasoning || index !== currentTypingIndex) && (
+            <Paper
+              sx={{
+                p: 2,
+                bgcolor: message.isUser ? '#1d4ed8' : '#fff',
+                color: message.isUser ? '#fff' : '#000',
+                borderRadius: 2,
+                boxShadow: 'none',
+                border: message.isUser ? 'none' : '1px solid #e5e7eb',
+              }}
+            >
+              <Typography sx={{ whiteSpace: 'pre-wrap' }}>
+                {message.loading ? '正在思考...' : renderMessageText(message, index)}
+              </Typography>
+            </Paper>
+          )}
+        </Box>
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 1,
+          mt: 1,
+          px: 5,
+        }}
+      >
+        <ButtonGroup variant="text" size="small">
+          <IconButton
+            onClick={() => handleCopy(message.text)}
+            sx={{ 
+              color: '#6b7280',
+              padding: '4px',
+            }}
+          >
+            <ContentCopyIcon sx={{ fontSize: '1rem' }} />
+          </IconButton>
+          {!message.isUser && (
+            <>
+              <IconButton
+                onClick={() => handleRegenerateResponse(index)}
+                sx={{ 
+                  color: '#6b7280',
+                  padding: '4px',
+                }}
+              >
+                <RefreshIcon sx={{ fontSize: '1rem' }} />
+              </IconButton>
+              <IconButton
+                sx={{ 
+                  color: '#6b7280',
+                  padding: '4px',
+                }}
+              >
+                <ThumbUpIcon sx={{ fontSize: '1rem' }} />
+              </IconButton>
+              <IconButton
+                sx={{ 
+                  color: '#6b7280',
+                  padding: '4px',
+                }}
+              >
+                <ThumbDownIcon sx={{ fontSize: '1rem' }} />
+              </IconButton>
+            </>
+          )}
+        </ButtonGroup>
+      </Box>
+    </Box>
+  );
 
   const hasMessages = messages.length > 0;
 
@@ -270,118 +559,7 @@ const ChatInterface = () => {
         display: hasMessages ? 'block' : 'none',
       }}>
         <Container maxWidth="md">
-          {messages.map((message, index) => (
-            <Box
-              key={index}
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: message.isUser ? 'flex-end' : 'flex-start',
-                mb: 3,
-              }}
-            >
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  flexDirection: message.isUser ? 'row-reverse' : 'row',
-                  width: '100%',
-                }}
-              >
-                {!message.isUser ? (
-                  <Box
-                    component="img"
-                    src="/deepseek-color.png"
-                    alt="AI"
-                    sx={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      mr: message.isUser ? 0 : 2,
-                      ml: message.isUser ? 2 : 0,
-                    }}
-                  />
-                ) : (
-                  <Box
-                    component="img"
-                    src="/user-avatar.png"
-                    alt="User"
-                    sx={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      mr: message.isUser ? 2 : 0,
-                      ml: message.isUser ? 0 : 2,
-                    }}
-                  />
-                )}
-                <Paper
-                  sx={{
-                    p: 2,
-                    maxWidth: '80%',
-                    bgcolor: message.isUser ? '#1d4ed8' : '#fff',
-                    color: message.isUser ? '#fff' : '#000',
-                    borderRadius: 2,
-                    boxShadow: 'none',
-                    border: message.isUser ? 'none' : '1px solid #e5e7eb',
-                  }}
-                >
-                  <Typography sx={{ whiteSpace: 'pre-wrap' }}>
-                    {renderMessageText(message, index)}
-                  </Typography>
-                </Paper>
-              </Box>
-              <Box
-                sx={{
-                  display: 'flex',
-                  gap: 1,
-                  mt: 1,
-                  px: 5,
-                }}
-              >
-                <ButtonGroup variant="text" size="small">
-                  <IconButton
-                    onClick={() => handleCopy(message.text)}
-                    sx={{ 
-                      color: '#6b7280',
-                      padding: '4px',
-                    }}
-                  >
-                    <ContentCopyIcon sx={{ fontSize: '1rem' }} />
-                  </IconButton>
-                  {!message.isUser && (
-                    <>
-                      <IconButton
-                        onClick={() => handleRegenerateResponse(index)}
-                        sx={{ 
-                          color: '#6b7280',
-                          padding: '4px',
-                        }}
-                      >
-                        <RefreshIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                      <IconButton
-                        sx={{ 
-                          color: '#6b7280',
-                          padding: '4px',
-                        }}
-                      >
-                        <ThumbUpIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                      <IconButton
-                        sx={{ 
-                          color: '#6b7280',
-                          padding: '4px',
-                        }}
-                      >
-                        <ThumbDownIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                    </>
-                  )}
-                </ButtonGroup>
-              </Box>
-            </Box>
-          ))}
+          {messages.map((message, index) => renderMessage(message, index))}
           <div ref={messagesEndRef} />
         </Container>
       </Box>
@@ -504,18 +682,22 @@ const ChatInterface = () => {
                 </IconButton>
               </Tooltip>
               <IconButton 
-                onClick={handleSend}
+                onClick={isGenerating ? handleStopGeneration : handleSend}
                 sx={{ 
-                  bgcolor: '#1d4ed8',
+                  bgcolor: isGenerating ? '#ef4444' : '#1d4ed8',
                   color: '#fff',
                   '&:hover': {
-                    bgcolor: '#1e40af',
+                    bgcolor: isGenerating ? '#dc2626' : '#1e40af',
                   },
                   width: '28px',
                   height: '28px',
                 }}
               >
-                <SendIcon sx={{ fontSize: '1.2rem' }} />
+                {isGenerating ? (
+                  <StopIcon sx={{ fontSize: '1.2rem' }} />
+                ) : (
+                  <SendIcon sx={{ fontSize: '1.2rem' }} />
+                )}
               </IconButton>
             </Box>
           </Box>
