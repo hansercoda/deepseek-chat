@@ -148,7 +148,7 @@ const ChatInterface = () => {
       const userMessage = messages[index - 1];
       if (!userMessage || !userMessage.isUser) return;
 
-      let endpoint = 'http://localhost:3003/api/chat/';
+      let endpoint = 'http://localhost:3333/api/chat/';
       if (deepThinking && webSearch) {
         endpoint += 'deepseek-r1-bing';
       } else if (!deepThinking && !webSearch) {
@@ -196,7 +196,10 @@ const ChatInterface = () => {
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
 
-    const newMessages = [...messages, { text: inputMessage, isUser: true }];
+    // 去除末尾的空行，但保留内容中间的空行
+    const processedMessage = inputMessage.replace(/\n+$/, '');
+    
+    const newMessages = [...messages, { text: processedMessage, isUser: true }];
     setMessages([...newMessages, { text: '', isUser: false, loading: true }]);
     setInputMessage('');
     setIsGenerating(true);
@@ -204,7 +207,7 @@ const ChatInterface = () => {
     try {
       abortController.current = new AbortController();
       
-      let endpoint = 'http://localhost:3003/api/chat/';
+      let endpoint = 'http://localhost:3333/api/chat/';
       if (deepThinking && webSearch) {
         endpoint += 'deepseek-r1-search';
       } else if (deepThinking) {
@@ -220,7 +223,7 @@ const ChatInterface = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: inputMessage }),
+        body: JSON.stringify({ message: processedMessage }),  // 使用处理后的消息
         signal: abortController.current.signal
       });
 
@@ -264,9 +267,9 @@ const ChatInterface = () => {
     }
     
     if (currentTypingIndex === index) {
-      // 如果是R1模式且正在显示推理内容，则不显示最终答案
+      // 如果是R1模式且正在显示推理内容，则不显示任何内容
       if (message.isR1 && !isTypingReasoning) {
-        return '';
+        return null;  // 返回 null 而不是空字符串，这样会阻止渲染白框
       }
       return displayedText;
     }
@@ -275,7 +278,6 @@ const ChatInterface = () => {
   };
 
   const renderReasoningContent = (message, index) => {
-    // 如果没有推理内容或者正在输入推理内容但尚未完成，则不显示
     if (!message.isR1 || !message.reasoningContent || 
         (currentTypingIndex === index && !isTypingReasoning && displayedReasoning === '')) {
       return null;
@@ -285,49 +287,88 @@ const ChatInterface = () => {
       ? displayedReasoning
       : message.reasoningContent;
 
-    // 只有当有内容时才显示
     if (!reasoningContent.trim()) {
       return null;
     }
 
     return (
       <Box sx={{ mt: 1, mb: 1 }}>
-        <Paper
-          elevation={0}
+        <Box
+          onClick={() => toggleReasoning(index)}
           sx={{
-            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5,
+            mb: 1,
             backgroundColor: 'rgba(0, 0, 0, 0.03)',
-            borderRadius: 2,
-            position: 'relative'
+            borderRadius: '8px',
+            padding: '4px 8px',
+            width: 'fit-content',
+            cursor: 'pointer',
+            '&:hover': {
+              backgroundColor: 'rgba(0, 0, 0, 0.05)'
+            }
           }}
         >
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              mb: 1
+          <PsychologyIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} />
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              color: '#6B7280',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              userSelect: 'none'
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <PsychologyIcon sx={{ fontSize: '1rem', color: 'text.secondary' }} />
-              <Typography variant="body2" color="text.secondary">
-                已深度思考
-              </Typography>
-            </Box>
-            <IconButton
-              size="small"
-              onClick={() => toggleReasoning(index)}
-            >
-              {message.showReasoning ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
+            已深度思考
+          </Typography>
+          <Box
+            sx={{ 
+              ml: 1,
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: '#F3F4F6',
+              borderRadius: '4px',
+              padding: '2px 4px',
+              userSelect: 'none'
+            }}
+          >
+            {message.showReasoning ? 
+              <ExpandLessIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} /> : 
+              <ExpandMoreIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} />
+            }
           </Box>
-          <Collapse in={message.showReasoning}>
-            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+        </Box>
+        <Collapse in={message.showReasoning}>
+          <Box
+            sx={{
+              position: 'relative',
+              pl: 2,
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: '2px',
+                background: '#E5E7EB',
+                borderRadius: '4px'
+              }
+            }}
+          >
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                whiteSpace: 'pre-wrap',
+                color: '#6B7280',
+                fontSize: '0.875rem',
+                lineHeight: 2
+              }}
+            >
               {reasoningContent}
             </Typography>
-          </Collapse>
-        </Paper>
+          </Box>
+        </Collapse>
       </Box>
     );
   };
@@ -356,11 +397,16 @@ const ChatInterface = () => {
       />
       <Box
         sx={{
-          maxWidth: message.isUser ? 'fit-content' : '70%',
+          maxWidth: 'calc(100% - 84px)', // 40px(头像) + 2*2px(margin) = 84px
           minWidth: '20%',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: message.isUser ? 'flex-end' : 'flex-start'
+          alignItems: message.isUser ? 'flex-end' : 'flex-start',
+          position: 'relative',
+          '&:hover .message-copy-button': {
+            opacity: 1,
+            visibility: 'visible',
+          }
         }}
       >
         {message.loading ? (
@@ -373,26 +419,62 @@ const ChatInterface = () => {
         ) : (
           <>
             {message.isR1 && renderReasoningContent(message, index)}
-            <Paper
-              elevation={1}
-              sx={{
-                p: 2,
-                backgroundColor: message.isUser ? '#e3f2fd' : '#ffffff',
-                borderRadius: 2,
-                position: 'relative',
-                width: message.isUser ? 'fit-content' : '100%'
-              }}
-            >
-              <Typography
-                variant="body1"
-                sx={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word'
-                }}
-              >
-                {renderMessageText(message, index)}
-              </Typography>
-            </Paper>
+            {(!message.isR1 || (currentTypingIndex !== index) || (currentTypingIndex === index && isTypingReasoning)) && (
+              <Box sx={{ 
+                position: 'relative', 
+                width: '100%', 
+                display: 'flex', 
+                flexDirection: 'row',
+                justifyContent: message.isUser ? 'flex-end' : 'flex-start',
+              }}>
+                {message.isUser && (
+                  <Tooltip title="复制">
+                    <IconButton
+                      className="message-copy-button"
+                      size="small"
+                      onClick={() => handleCopy(message.text)}
+                      sx={{
+                        opacity: 0,
+                        visibility: 'hidden',
+                        transition: 'all 0.2s',
+                        bgcolor: '#f3f4f6',
+                        mr: 1,
+                        order: 1,
+                        width: '28px',
+                        height: '28px',
+                        '&:hover': {
+                          bgcolor: '#e5e7eb',
+                        },
+                      }}
+                    >
+                      <ContentCopyIcon sx={{ fontSize: '1rem', color: '#6B7280' }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Paper
+                  elevation={1}
+                  sx={{
+                    p: 2,
+                    backgroundColor: message.isUser ? '#e3f2fd' : '#ffffff',
+                    borderRadius: 2,
+                    position: 'relative',
+                    width: 'fit-content',
+                    maxWidth: '100%',
+                    order: message.isUser ? 2 : 1,
+                  }}
+                >
+                  <Typography
+                    variant="body1"
+                    sx={{
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {renderMessageText(message, index)}
+                  </Typography>
+                </Paper>
+              </Box>
+            )}
             {!message.isUser && !message.loading && (
               <Box
                 sx={{
@@ -556,9 +638,17 @@ const ChatInterface = () => {
             flexDirection: 'column',
             border: '1px solid #e5e7eb',
             borderRadius: 2,
-            boxShadow: 'none',
             bgcolor: '#f9fafb',
             overflow: 'hidden',
+            position: 'relative',
+            transition: 'box-shadow 0.2s ease-in-out',
+            boxShadow: 'none',
+            '&:hover': {
+              boxShadow: '0 2px 4px -1px rgb(0 0 0 / 0.05)',
+            },
+            '&:focus-within': {
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+            },
           }}
         >
           <Box sx={{ 
@@ -568,6 +658,7 @@ const ChatInterface = () => {
             display: 'flex',
             alignItems: 'center',
             bgcolor: '#f9fafb',
+            position: 'relative',
           }}>
             <TextField
               fullWidth
@@ -668,12 +759,15 @@ const ChatInterface = () => {
                   },
                   width: '28px',
                   height: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
                 {isGenerating ? (
-                  <StopIcon sx={{ fontSize: '1.2rem' }} />
+                  <StopIcon sx={{ fontSize: '0.9rem' }} />
                 ) : (
-                  <SendIcon sx={{ fontSize: '1.2rem' }} />
+                  <SendIcon sx={{ fontSize: '0.9rem' }} />
                 )}
               </IconButton>
             </Box>
