@@ -321,4 +321,223 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 - 启用 Nginx 缓存
 - 配置 Gzip 压缩
 - 使用 CDN 加速静态资源
-- 优化前端构建包大小 
+- 优化前端构建包大小
+
+## CentOS 服务器部署指南
+
+### 1. 环境准备
+
+```bash
+# 更新系统包
+sudo yum update -y
+
+# 安装 EPEL 仓库
+sudo yum install -y epel-release
+
+# 安装 Node.js
+curl -fsSL https://rpm.nodesource.com/setup_16.x | sudo bash -
+sudo yum install -y nodejs
+
+# 安装 Nginx
+sudo yum install -y nginx
+
+# 安装 PM2
+sudo npm install -g pm2
+```
+
+### 2. 项目部署
+
+```bash
+# 创建项目目录
+sudo mkdir -p /data/deepseek-chat
+sudo chown -R $USER:$USER /data/deepseek-chat
+cd /data/deepseek-chat
+
+# 克隆项目
+git clone [项目地址] .
+
+# 安装依赖
+npm install
+
+# 构建前端项目
+npm run build
+
+# 创建环境配置文件
+cat > .env << EOL
+DEEPSEEK_API_KEY=your_api_key_here
+PORT=3001
+NODE_ENV=production
+EOL
+```
+
+### 3. Nginx 配置
+
+```bash
+# 创建 Nginx 配置文件
+sudo nano /etc/nginx/conf.d/deepseek-chat.conf
+```
+
+配置文件内容：
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;  # 替换为你的域名
+
+    # 前端静态文件
+    location / {
+        root /data/deepseek-chat/build;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端 API 代理
+    location /api/ {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        
+        # CORS 配置
+        add_header 'Access-Control-Allow-Origin' 'https://yourdomain.com';
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+    }
+}
+```
+
+### 4. 系统配置
+
+```bash
+# SELinux 配置（如果启用）
+sudo semanage fcontext -a -t httpd_sys_content_t "/data/deepseek-chat/build(/.*)?"
+sudo restorecon -Rv /data/deepseek-chat/build
+sudo setsebool -P httpd_can_network_connect 1
+
+# 配置防火墙
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+### 5. 启动服务
+
+```bash
+# 启动 Nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+# 启动后端服务
+cd /data/deepseek-chat
+pm2 start server.js --name "deepseek-chat-api"
+pm2 save
+pm2 startup
+```
+
+### 6. SSL 配置（可选）
+
+```bash
+# 安装 Certbot
+sudo yum install -y certbot python3-certbot-nginx
+
+# 获取 SSL 证书
+sudo certbot --nginx -d yourdomain.com
+```
+
+## 项目更新指南
+
+### 1. 更新代码
+
+```bash
+# 进入项目目录
+cd /data/deepseek-chat
+
+# 保存当前 .env 文件
+cp .env .env.backup
+
+# 拉取最新代码
+git pull
+
+# 还原 .env 文件
+cp .env.backup .env
+
+# 安装新依赖
+npm install
+
+# 重新构建前端
+npm run build
+```
+
+### 2. 重启服务
+
+```bash
+# 重启后端服务
+pm2 restart deepseek-chat-api
+
+# 检查服务状态
+pm2 status
+
+# 如果 Nginx 配置有更新，需要重新加载 Nginx
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 常见问题排查
+
+1. **权限问题**
+```bash
+# 检查目录权限
+ls -la /data/deepseek-chat
+
+# 修复权限
+sudo chown -R $USER:$USER /data/deepseek-chat
+```
+
+2. **服务状态检查**
+```bash
+# 检查 Nginx 状态
+sudo systemctl status nginx
+
+# 检查 PM2 进程
+pm2 status
+
+# 查看后端日志
+pm2 logs deepseek-chat-api
+
+# 查看 Nginx 错误日志
+sudo tail -f /var/log/nginx/error.log
+```
+
+3. **SELinux 问题**
+```bash
+# 查看 SELinux 审计日志
+sudo tail -f /var/log/audit/audit.log
+
+# 临时禁用 SELinux（测试用）
+sudo setenforce 0
+```
+
+4. **防火墙检查**
+```bash
+# 查看防火墙状态
+sudo firewall-cmd --list-all
+
+# 检查端口是否开放
+sudo firewall-cmd --list-ports
+```
+
+### 备份建议
+
+1. 定期备份以下文件：
+   - `.env` 文件
+   - Nginx 配置文件
+   - SSL 证书（如果有）
+   - 数据目录（如果有）
+
+2. 建议使用 cron 任务自动备份：
+```bash
+# 创建备份脚本
+0 2 * * * tar -czf /backup/deepseek-chat-$(date +\%Y\%m\%d).tar.gz /data/deepseek-chat/.env /etc/nginx/conf.d/deepseek-chat.conf
+``` 

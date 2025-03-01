@@ -62,7 +62,7 @@ app.post('/api/chat/deepseek-r1', async (req, res) => {
             messages: [
                 { 
                     role: "system", 
-                    content: "You are a helpful assistant. " 
+                    content: "你是一个深度思考的智能助手。请按照以下格式回复：\n1. 首先提供详细的推理过程，分析问题的各个方面\n2. 然后用两个换行符分隔\n3. 最后给出最终答案\n\n请确保使用用户的输入语言进行回复。" 
                 },
                 { role: "user", content: message }
             ],
@@ -97,9 +97,25 @@ app.post('/api/chat/deepseek-r1', async (req, res) => {
             console.log('Reasoning Content:', reasoningContent);
             console.log('\nFinal Content:', finalContent);
         } else {
-            finalContent = fullContent;
-            console.log('\n=== No Separation Found ===');
-            console.log('Using full content as final answer');
+            // 如果没有明确的分隔，尝试查找其他分隔标记
+            const possibleSeparators = ['结论：', '最终答案：', '答案：', '总结：'];
+            for (const separator of possibleSeparators) {
+                if (fullContent.includes(separator)) {
+                    const [reasoning, ...rest] = fullContent.split(separator);
+                    reasoningContent = reasoning.trim();
+                    finalContent = separator + rest.join(separator).trim();
+                    break;
+                }
+            }
+            
+            // 如果仍然没有找到分隔，使用整个内容作为最终答案
+            if (!reasoningContent && !finalContent) {
+                finalContent = fullContent;
+            }
+            
+            console.log('\n=== Separated Content (Alternative) ===');
+            console.log('Reasoning Content:', reasoningContent);
+            console.log('\nFinal Content:', finalContent);
         }
 
         const responseData = {
@@ -229,4 +245,4 @@ app.get('/api/health', (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`服务器运行在端口 ${PORT}`);
-}); 
+});

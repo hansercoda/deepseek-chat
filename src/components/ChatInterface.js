@@ -74,15 +74,16 @@ const ChatInterface = () => {
         
         if (message.isR1 && message.reasoningContent && !isTypingReasoning) {
           // 先显示推理内容
-          const reasoningText = message.reasoningContent;
+          const reasoningText = message.reasoningContent || '';
           const timer = setInterval(() => {
             if (index <= reasoningText.length) {
               setDisplayedReasoning(reasoningText.slice(0, index));
               index++;
             } else {
               clearInterval(timer);
+              // 推理内容显示完成后，设置标志并重置索引
               setIsTypingReasoning(true);
-              index = 0; // 重置索引，准备显示最终答案
+              index = 0;
             }
           }, typingInterval);
 
@@ -90,9 +91,11 @@ const ChatInterface = () => {
             clearInterval(timer);
             setDisplayedReasoning(reasoningText);
           };
-        } else if (message.isR1 && isTypingReasoning) {
-          // 显示最终答案
-          const text = message.text;
+        }
+
+        // 显示最终答案（只有在推理内容显示完成后或没有推理内容时）
+        if (!message.isR1 || isTypingReasoning) {
+          const text = message.text || '';
           const timer = setInterval(() => {
             if (index <= text.length) {
               setDisplayedText(text.slice(0, index));
@@ -101,23 +104,6 @@ const ChatInterface = () => {
               clearInterval(timer);
               setCurrentTypingIndex(-1);
               setIsTypingReasoning(false);
-            }
-          }, typingInterval);
-
-          return () => {
-            clearInterval(timer);
-            setDisplayedText(text);
-          };
-        } else {
-          // 非 R1 消息的正常显示
-          const text = message.text;
-          const timer = setInterval(() => {
-            if (index <= text.length) {
-              setDisplayedText(text.slice(0, index));
-              index++;
-            } else {
-              clearInterval(timer);
-              setCurrentTypingIndex(-1);
             }
           }, typingInterval);
 
@@ -180,11 +166,19 @@ const ChatInterface = () => {
       });
 
       const data = await response.json();
-      const newMessages = [...messages];
-      newMessages[index] = { text: data.response, isUser: false };
-      setMessages(newMessages);
-      setCurrentTypingIndex(index);
-      setDisplayedText('');
+      if (data.success) {
+        const newMessages = [...messages];
+        newMessages[index] = {
+          text: data.raw_response.choices[0].message.content,
+          isUser: false,
+          isR1: deepThinking,
+          reasoningContent: data.raw_response.choices[0].message.reasoning_content,
+          showReasoning: true,
+        };
+        setMessages(newMessages);
+        setCurrentTypingIndex(index);
+        setDisplayedText('');
+      }
     } catch (error) {
       console.error('Error:', error);
     }
@@ -231,10 +225,10 @@ const ChatInterface = () => {
       const data = await response.json();
       if (data.success) {
         const aiMessage = {
-          text: data.response,
+          text: data.raw_response.choices[0].message.content,
           isUser: false,
           isR1: deepThinking,
-          reasoningContent: data.reasoning_content,
+          reasoningContent: data.raw_response.choices[0].message.reasoning_content,
           showReasoning: true, // 默认展开推理内容
         };
         setMessages([...newMessages, aiMessage]);
@@ -267,25 +261,70 @@ const ChatInterface = () => {
       return message.text;
     }
     
-    if (message.isR1 && message.reasoningContent) {
-      if (index === currentTypingIndex) {
-        if (!isTypingReasoning) {
-          return '';
-        } else {
-          return displayedText;
-        }
+    if (currentTypingIndex === index) {
+      // 如果是R1模式且正在显示推理内容，则不显示最终答案
+      if (message.isR1 && !isTypingReasoning) {
+        return '';
       }
-      return message.text;
+      return displayedText;
     }
     
-    return index === currentTypingIndex ? displayedText : message.text;
+    return message.text;
   };
 
   const renderReasoningContent = (message, index) => {
-    if (index === currentTypingIndex && !isTypingReasoning) {
-      return displayedReasoning;
+    // 如果没有推理内容或者正在输入推理内容但尚未完成，则不显示
+    if (!message.isR1 || !message.reasoningContent || 
+        (currentTypingIndex === index && !isTypingReasoning && displayedReasoning === '')) {
+      return null;
     }
-    return message.reasoningContent;
+
+    const reasoningContent = currentTypingIndex === index && !isTypingReasoning
+      ? displayedReasoning
+      : message.reasoningContent;
+
+    // 只有当有内容时才显示
+    if (!reasoningContent.trim()) {
+      return null;
+    }
+
+    return (
+      <Box sx={{ mt: 1, mb: 1 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            backgroundColor: 'rgba(0, 0, 0, 0.03)',
+            borderRadius: 2,
+            position: 'relative'
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              mb: 1
+            }}
+          >
+            <Typography variant="body2" color="textSecondary">
+              已深度思考
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={() => toggleReasoning(index)}
+            >
+              {message.showReasoning ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+          </Box>
+          <Collapse in={message.showReasoning}>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+              {reasoningContent}
+            </Typography>
+          </Collapse>
+        </Paper>
+      </Box>
+    );
   };
 
   const renderMessage = (message, index) => (
@@ -293,182 +332,90 @@ const ChatInterface = () => {
       key={index}
       sx={{
         display: 'flex',
-        flexDirection: 'column',
-        alignItems: message.isUser ? 'flex-end' : 'flex-start',
-        mb: 3,
+        flexDirection: message.isUser ? 'row-reverse' : 'row',
+        mb: 2,
+        opacity: message.loading ? 0.5 : 1
       }}
     >
       <Box
+        component="img"
+        src={message.isUser ? '/user-avatar.png' : '/deepseek-color.png'}
+        alt={message.isUser ? 'User Avatar' : 'AI Avatar'}
         sx={{
+          width: 40,
+          height: 40,
+          borderRadius: '50%',
+          mr: message.isUser ? 0 : 2,
+          ml: message.isUser ? 2 : 0
+        }}
+      />
+      <Box
+        sx={{
+          maxWidth: message.isUser ? 'fit-content' : '70%',
+          minWidth: '20%',
           display: 'flex',
-          alignItems: 'flex-start',
-          flexDirection: message.isUser ? 'row-reverse' : 'row',
-          width: '100%',
+          flexDirection: 'column',
+          alignItems: message.isUser ? 'flex-end' : 'flex-start'
         }}
       >
-        {!message.isUser && (
-          <Box
-            sx={{
-              position: 'relative',
-              width: 32,
-              height: 32,
-              mr: message.isUser ? 0 : 2,
-              ml: message.isUser ? 2 : 0,
-            }}
-          >
-            <Box
-              component="img"
-              src="/deepseek-color.png"
-              alt="AI"
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                opacity: message.loading ? 0.5 : 1,
-              }}
-            />
-            {message.loading && (
-              <CircularProgress
-                size={32}
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  color: '#1d4ed8',
-                }}
-              />
+        {message.loading ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={20} />
+            {deepThinking && (
+              <Typography variant="body1">正在思考...</Typography>
             )}
           </Box>
-        )}
-        {message.isUser && (
-          <Box
-            component="img"
-            src="/user-avatar.png"
-            alt="User"
-            sx={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              mr: message.isUser ? 2 : 0,
-              ml: message.isUser ? 0 : 2,
-            }}
-          />
-        )}
-        <Box sx={{ display: 'flex', flexDirection: 'column', maxWidth: '80%' }}>
-          {!message.isUser && message.isR1 && message.reasoningContent && (
+        ) : (
+          <>
+            {message.isR1 && renderReasoningContent(message, index)}
             <Paper
+              elevation={1}
               sx={{
                 p: 2,
-                mb: index === currentTypingIndex && !isTypingReasoning ? 0 : 1,
-                bgcolor: '#f3f4f6',
+                backgroundColor: message.isUser ? '#e3f2fd' : '#ffffff',
                 borderRadius: 2,
-                border: '1px solid #e5e7eb',
                 position: 'relative',
+                width: message.isUser ? 'fit-content' : '100%'
               }}
             >
+              <Typography
+                variant="body1"
+                sx={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
+                }}
+              >
+                {renderMessageText(message, index)}
+              </Typography>
+            </Paper>
+            {!message.isUser && !message.loading && (
               <Box
                 sx={{
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
+                  justifyContent: 'flex-end',
+                  mt: 1
                 }}
-                onClick={() => toggleReasoning(index)}
               >
-                <Typography
-                  variant="subtitle2"
-                  sx={{ color: '#4b5563', fontWeight: 600 }}
-                >
-                  已深度思考
-                </Typography>
-                <IconButton size="small">
-                  {message.showReasoning ? (
-                    <ExpandLessIcon fontSize="small" />
-                  ) : (
-                    <ExpandMoreIcon fontSize="small" />
-                  )}
-                </IconButton>
+                <Tooltip title="复制">
+                  <IconButton
+                    size="small"
+                    onClick={() => handleCopy(message.text)}
+                  >
+                    <ContentCopyIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="重新生成">
+                  <IconButton
+                    size="small"
+                    onClick={() => handleRegenerateResponse(index)}
+                  >
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </Box>
-              <Collapse in={message.showReasoning}>
-                <Typography
-                  sx={{
-                    mt: 1,
-                    color: '#4b5563',
-                    whiteSpace: 'pre-wrap',
-                    fontSize: '0.875rem',
-                  }}
-                >
-                  {renderReasoningContent(message, index)}
-                </Typography>
-              </Collapse>
-            </Paper>
-          )}
-          {(!message.isR1 || isTypingReasoning || index !== currentTypingIndex) && (
-            <Paper
-              sx={{
-                p: 2,
-                bgcolor: message.isUser ? '#1d4ed8' : '#fff',
-                color: message.isUser ? '#fff' : '#000',
-                borderRadius: 2,
-                boxShadow: 'none',
-                border: message.isUser ? 'none' : '1px solid #e5e7eb',
-              }}
-            >
-              <Typography sx={{ whiteSpace: 'pre-wrap' }}>
-                {message.loading ? '正在思考...' : renderMessageText(message, index)}
-              </Typography>
-            </Paper>
-          )}
-        </Box>
-      </Box>
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 1,
-          mt: 1,
-          px: 5,
-        }}
-      >
-        <ButtonGroup variant="text" size="small">
-          <IconButton
-            onClick={() => handleCopy(message.text)}
-            sx={{ 
-              color: '#6b7280',
-              padding: '4px',
-            }}
-          >
-            <ContentCopyIcon sx={{ fontSize: '1rem' }} />
-          </IconButton>
-          {!message.isUser && (
-            <>
-              <IconButton
-                onClick={() => handleRegenerateResponse(index)}
-                sx={{ 
-                  color: '#6b7280',
-                  padding: '4px',
-                }}
-              >
-                <RefreshIcon sx={{ fontSize: '1rem' }} />
-              </IconButton>
-              <IconButton
-                sx={{ 
-                  color: '#6b7280',
-                  padding: '4px',
-                }}
-              >
-                <ThumbUpIcon sx={{ fontSize: '1rem' }} />
-              </IconButton>
-              <IconButton
-                sx={{ 
-                  color: '#6b7280',
-                  padding: '4px',
-                }}
-              >
-                <ThumbDownIcon sx={{ fontSize: '1rem' }} />
-              </IconButton>
-            </>
-          )}
-        </ButtonGroup>
+            )}
+          </>
+        )}
       </Box>
     </Box>
   );
