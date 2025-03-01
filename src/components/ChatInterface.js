@@ -22,6 +22,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import PsychologyIcon from '@mui/icons-material/Psychology';
+import LanguageIcon from '@mui/icons-material/Language';
 
 const ChatInterface = () => {
   // 从本地存储加载初始状态
@@ -146,15 +148,15 @@ const ChatInterface = () => {
       const userMessage = messages[index - 1];
       if (!userMessage || !userMessage.isUser) return;
 
-      let endpoint = 'http://localhost:3001/api/chat';
+      let endpoint = 'http://localhost:3003/api/chat/';
       if (deepThinking && webSearch) {
-        endpoint += '/deepseek-r1-bing';
+        endpoint += 'deepseek-r1-bing';
       } else if (!deepThinking && !webSearch) {
-        endpoint += '/deepseek-v3';
+        endpoint += 'deepseek-v3';
       } else if (deepThinking) {
-        endpoint += '/deepseek-r1';
+        endpoint += 'deepseek-r1';
       } else {
-        endpoint += '/deepseek-v3-bing';
+        endpoint += 'deepseek-v3-bing';
       }
 
       const response = await fetch(endpoint, {
@@ -202,7 +204,7 @@ const ChatInterface = () => {
     try {
       abortController.current = new AbortController();
       
-      let endpoint = 'http://localhost:3001/api/chat/';
+      let endpoint = 'http://localhost:3003/api/chat/';
       if (deepThinking && webSearch) {
         endpoint += 'deepseek-r1-search';
       } else if (deepThinking) {
@@ -307,9 +309,12 @@ const ChatInterface = () => {
               mb: 1
             }}
           >
-            <Typography variant="body2" color="textSecondary">
-              已深度思考
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <PsychologyIcon sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+              <Typography variant="body2" color="text.secondary">
+                已深度思考
+              </Typography>
+            </Box>
             <IconButton
               size="small"
               onClick={() => toggleReasoning(index)}
@@ -432,6 +437,21 @@ const ChatInterface = () => {
         position: 'relative',
         justifyContent: hasMessages ? 'flex-start' : 'center',
         transition: 'all 0.3s ease',
+        overflowY: 'scroll',  // 始终显示滚动条
+        scrollbarGutter: 'stable',  // 保持滚动条空间稳定
+        '&::-webkit-scrollbar': {
+          width: '10px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: '#f1f1f1',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: '#888',
+          borderRadius: '5px',
+        },
+        '&::-webkit-scrollbar-thumb:hover': {
+          background: '#555',
+        },
       }}
     >
       {/* 欢迎信息 */}
@@ -504,8 +524,16 @@ const ChatInterface = () => {
         opacity: hasMessages ? 1 : 0,
         transition: 'opacity 0.3s ease',
         display: hasMessages ? 'block' : 'none',
+        overflowX: 'hidden',  // 防止水平滚动
       }}>
-        <Container maxWidth="md">
+        <Container 
+          maxWidth="md" 
+          sx={{ 
+            margin: '0 auto',
+            width: '100%',
+            maxWidth: 'calc(100% - 20px)',  // 确保容器不会因为滚动条而改变宽度
+          }}
+        >
           {messages.map((message, index) => renderMessage(message, index))}
           <div ref={messagesEndRef} />
         </Container>
@@ -592,6 +620,7 @@ const ChatInterface = () => {
                 fontSize: '13px',
               }}
               onClick={() => setDeepThinking(!deepThinking)}
+              startIcon={<PsychologyIcon sx={{ fontSize: '1.2rem' }} />}
             >
               深度思考 (R1)
             </Button>
@@ -609,6 +638,7 @@ const ChatInterface = () => {
                 fontSize: '13px',
               }}
               onClick={() => setWebSearch(!webSearch)}
+              startIcon={<LanguageIcon sx={{ fontSize: '1.2rem' }} />}
             >
               联网搜索
             </Button>

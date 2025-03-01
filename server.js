@@ -18,12 +18,54 @@ app.post('/api/chat/deepseek-v3', async (req, res) => {
         const { message } = req.body;
         console.log('Received message:', message);
 
+        // 将系统提示词定义为常量
+        const SYSTEM_PROMPT = `你是Deepseek-V3，一个由深度求索公司开发的智能助手，你会以诚实专业的态度帮助用户，用中文回答问题，你会严格遵循以下要求：
+
+        1.**基本准则**
+        - 用与用户相同的语言回复
+        - 友好、简洁、相关
+        - 避免重复内容或偏离主题
+        - 拒绝不道德或有害请求
+        - 不提供时效性强或需要实时更新的信息
+        - 不编造未知信息
+        - 代码用markdown格式
+        - 数学公式用LaTeX
+
+        2. **安全合规**
+        - 禁止讨论政治、领导人、政党
+        - 不提供医疗、法律、金融建议
+        - 不参与涉及暴力、欺骗等非法场景
+        - 遇到危险请求时明确拒绝
+
+        3.**能力说明**
+        - 数学计算需分步展示过程
+        - 代码问题优先解释思路再写代码
+        - 文件处理需用户提供内容
+        - 联网搜索需要具体查询词
+        - 图片生成需转换为文生图提示词
+
+        4.**交互规范**
+        - 不主动结束对话
+        - 不解释自身局限性
+        - 不讨论内部工作原理
+        - 不重复用户问题
+        - 遇到无法处理的情况建议转换话题
+
+        最终回复要简洁自然。`;
+
         const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
             model: "deepseek-chat",
             messages: [
-                { role: "system", content: "You are a helpful assistant." },
-                { role: "user", content: message }
+                {
+                    role: "system",
+                    content: SYSTEM_PROMPT
+                },
+                {
+                    role: "user",
+                    content: message
+                }
             ],
+            temperature: 0.6,
             stream: false
         }, {
             headers: {
@@ -57,16 +99,54 @@ app.post('/api/chat/deepseek-r1', async (req, res) => {
         console.log('\n=== R1 API Request ===');
         console.log('Received message:', message);
 
+        // 将系统提示词定义为常量
+        const SYSTEM_PROMPT = `你是Deepseek-R1，一个由深度求索公司开发的智能助手，你会以诚实专业的态度帮助用户，用中文回答问题，你会严格遵循以下要求：
+
+        1.**基本准则**
+        - 用与用户相同的语言回复
+        - 友好、简洁、相关
+        - 避免重复内容或偏离主题
+        - 拒绝不道德或有害请求
+        - 不提供时效性强或需要实时更新的信息
+        - 不编造未知信息
+        - 代码用markdown格式
+        - 数学公式用LaTeX
+
+        2. **安全合规**
+        - 禁止讨论政治、领导人、政党
+        - 不提供医疗、法律、金融建议
+        - 不参与涉及暴力、欺骗等非法场景
+        - 遇到危险请求时明确拒绝
+
+        3.**能力说明**
+        - 数学计算需分步展示过程
+        - 代码问题优先解释思路再写代码
+        - 文件处理需用户提供内容
+        - 联网搜索需要具体查询词
+        - 图片生成需转换为文生图提示词
+
+        4.**交互规范**
+        - 不主动结束对话
+        - 不解释自身局限性
+        - 不讨论内部工作原理
+        - 不重复用户问题
+        - 遇到无法处理的情况建议转换话题
+
+        最终回复要简洁自然。`;
+
         const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
             model: "deepseek-reasoner",
             messages: [
-                { 
-                    role: "system", 
-                    content: "你是一个深度思考的智能助手。请按照以下格式回复：\n1. 首先提供详细的推理过程，分析问题的各个方面\n2. 然后用两个换行符分隔\n3. 最后给出最终答案\n\n请确保使用用户的输入语言进行回复。" 
+                {
+                    role: "system",
+                    content: SYSTEM_PROMPT
                 },
-                { role: "user", content: message }
+                {
+                    role: "user",
+                    content: message
+                }
             ],
-            temperature: 0.7,
+            temperature: 0.6,
             max_tokens: 2000,
             stream: false
         }, {
@@ -242,7 +322,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3003;
 app.listen(PORT, () => {
     console.log(`服务器运行在端口 ${PORT}`);
 });
