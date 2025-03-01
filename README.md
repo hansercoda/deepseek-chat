@@ -45,6 +45,8 @@
 - DeepSeek API
 - LocalStorage API
 - CSS-in-JS
+- Nginx (用于生产环境部署)
+- PM2 (用于 Node.js 进程管理)
 
 ## 项目启动
 
@@ -71,6 +73,7 @@ npm install
 ```
 DEEPSEEK_API_KEY=your_api_key_here
 PORT=3001
+NODE_ENV=production
 ```
 
 4. 启动后端服务
@@ -152,4 +155,170 @@ copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software. 
+copies or substantial portions of the Software.
+
+## 生产环境部署
+
+### 服务器要求
+- Linux 服务器（推荐 Ubuntu 20.04 或更高版本）
+- Node.js 16.0.0 或更高版本
+- Nginx
+- PM2 (`npm install -g pm2`)
+
+### 前端部署步骤
+
+1. 修改前端 API 配置
+编辑 `src/components/ChatInterface.js`，将 API 地址改为你的域名：
+```javascript
+// 将所有 http://localhost:3001 替换为
+const API_BASE_URL = 'https://api.yourdomain.com';
+```
+
+2. 构建前端项目
+```bash
+npm run build
+```
+
+3. 配置 Nginx
+创建 Nginx 配置文件 `/etc/nginx/sites-available/deepseek-chat`:
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;  # 替换为你的域名
+
+    # SSL 配置（推荐）
+    listen 443 ssl;
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    # 前端静态文件
+    location / {
+        root /path/to/build;  # 替换为你的构建文件路径
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端 API 代理
+    location /api/ {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        
+        # CORS 配置（如果需要）
+        add_header 'Access-Control-Allow-Origin' 'https://yourdomain.com';
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+        
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' 'https://yourdomain.com';
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain; charset=utf-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+    }
+}
+```
+
+4. 启用 Nginx 配置
+```bash
+sudo ln -s /etc/nginx/sites-available/deepseek-chat /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### 后端部署步骤
+
+1. 修改后端 CORS 配置
+编辑 `server.js`，更新 CORS 配置：
+```javascript
+const corsOptions = {
+    origin: 'https://yourdomain.com',  // 替换为你的域名
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+};
+app.use(cors(corsOptions));
+```
+
+2. 配置环境变量
+创建 `.env` 文件：
+```
+DEEPSEEK_API_KEY=your_api_key_here
+PORT=3001
+NODE_ENV=production
+```
+
+3. 使用 PM2 启动后端服务
+```bash
+pm2 start server.js --name "deepseek-chat-api"
+pm2 save
+pm2 startup  # 设置开机自启
+```
+
+### 安全配置
+
+1. 配置防火墙
+```bash
+# Ubuntu UFW
+sudo ufw allow 80
+sudo ufw allow 443
+sudo ufw allow ssh
+sudo ufw enable
+```
+
+2. SSL 证书（推荐使用 Let's Encrypt）
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com
+```
+
+3. 设置安全头
+在 Nginx 配置中添加：
+```nginx
+add_header X-Frame-Options "SAMEORIGIN";
+add_header X-XSS-Protection "1; mode=block";
+add_header X-Content-Type-Options "nosniff";
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+```
+
+### 部署检查清单
+
+- [ ] 前端构建成功
+- [ ] 后端服务正常运行
+- [ ] Nginx 配置正确
+- [ ] SSL 证书已安装
+- [ ] CORS 配置正确
+- [ ] 环境变量设置完成
+- [ ] 防火墙规则已配置
+- [ ] PM2 进程管理正常
+- [ ] 域名 DNS 解析正确
+
+### 常见问题
+
+1. 502 Bad Gateway
+- 检查后端服务是否正常运行
+- 检查 Nginx 配置中的代理地址是否正确
+- 查看 Nginx 错误日志：`sudo tail -f /var/log/nginx/error.log`
+
+2. CORS 错误
+- 确保 Nginx 和后端的 CORS 配置与实际域名匹配
+- 检查请求头和响应头是否正确
+- 使用浏览器开发者工具查看具体错误信息
+
+3. SSL 证书问题
+- 确保证书路径正确
+- 检查证书是否过期
+- 运行 `certbot renew --dry-run` 测试自动续期
+
+4. 性能优化建议
+- 启用 Nginx 缓存
+- 配置 Gzip 压缩
+- 使用 CDN 加速静态资源
+- 优化前端构建包大小 
