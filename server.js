@@ -172,7 +172,7 @@ app.post('/api/chat/deepseek-r1', async (req, res) => {
         if (parts.length > 1) {
             reasoningContent = parts[0];
             finalContent = parts.slice(1).join('\n\n');
-            
+
             console.log('\n=== Separated Content ===');
             console.log('Reasoning Content:', reasoningContent);
             console.log('\nFinal Content:', finalContent);
@@ -187,12 +187,12 @@ app.post('/api/chat/deepseek-r1', async (req, res) => {
                     break;
                 }
             }
-            
+
             // 如果仍然没有找到分隔，使用整个内容作为最终答案
             if (!reasoningContent && !finalContent) {
                 finalContent = fullContent;
             }
-            
+
             console.log('\n=== Separated Content (Alternative) ===');
             console.log('Reasoning Content:', reasoningContent);
             console.log('\nFinal Content:', finalContent);
@@ -233,9 +233,9 @@ app.post('/api/chat/deepseek-r1-search', async (req, res) => {
         const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
             model: "deepseek-reasoner",
             messages: [
-                { 
-                    role: "system", 
-                    content: "You are a thoughtful assistant with access to current information. First, analyze the search results and provide your reasoning. Then, provide your final answer. Separate the reasoning and answer with a double newline." 
+                {
+                    role: "system",
+                    content: "You are a thoughtful assistant with access to current information. First, analyze the search results and provide your reasoning. Then, provide your final answer. Separate the reasoning and answer with a double newline."
                 },
                 { role: "user", content: `Based on this search context: ${searchResults}\n\nUser question: ${message}` }
             ],
@@ -322,7 +322,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-const PORT = process.env.PORT || 3003;
-app.listen(PORT, () => {
-    console.log(`服务器运行在端口 ${PORT}`);
+const API_PORT = process.env.API_PORT || 3333;
+app.listen(API_PORT, () => {
+    console.log(`服务器运行在端口 ${API_PORT}`);
 });

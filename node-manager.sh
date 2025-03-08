@@ -6,7 +6,7 @@ APP_NAME="server.js"
 LOG_FILE="server.log"
 PID_FILE="server.pid"
 MAX_RETRY=3
-PORT=3003  # 修改为你的实际端口
+PORT=3333  # 修改为你的实际端口
 
 # 获取进程ID函数
 get_pid() {

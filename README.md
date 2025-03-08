@@ -35,8 +35,7 @@ npm install
 
 ```bash
 # .env
-REACT_APP_API_BASE_URL=your_api_base_url
-PORT=3000                    # 服务器端口
+API_PORT=3333                   # 服务器端口
 DEEPSEEK_API_KEY=your_key   # DeepSeek API密钥
 ```
 
@@ -169,4 +168,4 @@ chore: 修改构建流程或辅助工具
 ## 联系方式
 
 - 项目地址：[https://github.com/hansercoda/deepseek-chat](https://github.com/hansercoda/deepseek-chat)
-- 问题反馈：通过 GitHub Issues 
+- 问题反馈：通过 GitHub Issues

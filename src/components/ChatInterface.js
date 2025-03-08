@@ -7,7 +7,6 @@ import {
   Typography,
   IconButton,
   Button,
-  ButtonGroup,
   Snackbar,
   Tooltip,
   CircularProgress,
@@ -16,8 +15,6 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import StopIcon from '@mui/icons-material/Stop';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import ThumbUpIcon from '@mui/icons-material/ThumbUp';
-import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -73,7 +70,7 @@ const ChatInterface = () => {
       if (!message.isUser) {
         let index = 0;
         const typingInterval = 30; // 打字速度（毫秒）
-        
+
         if (message.isR1 && message.reasoningContent && !isTypingReasoning) {
           // 先显示推理内容
           const reasoningText = message.reasoningContent || '';
@@ -198,7 +195,7 @@ const ChatInterface = () => {
 
     // 去除末尾的空行，但保留内容中间的空行
     const processedMessage = inputMessage.replace(/\n+$/, '');
-    
+
     const newMessages = [...messages, { text: processedMessage, isUser: true }];
     setMessages([...newMessages, { text: '', isUser: false, loading: true }]);
     setInputMessage('');
@@ -206,7 +203,7 @@ const ChatInterface = () => {
 
     try {
       abortController.current = new AbortController();
-      
+
       let endpoint = 'http://localhost:3333/api/chat/';
       if (deepThinking && webSearch) {
         endpoint += 'deepseek-r1-search';
@@ -256,7 +253,7 @@ const ChatInterface = () => {
   };
 
   const toggleReasoning = (index) => {
-    setMessages(messages.map((msg, i) => 
+    setMessages(messages.map((msg, i) =>
       i === index ? { ...msg, showReasoning: !msg.showReasoning } : msg
     ));
   };
@@ -265,7 +262,7 @@ const ChatInterface = () => {
     if (message.isUser) {
       return message.text;
     }
-    
+
     if (currentTypingIndex === index) {
       // 如果是R1模式且正在显示推理内容，则不显示任何内容
       if (message.isR1 && !isTypingReasoning) {
@@ -273,12 +270,12 @@ const ChatInterface = () => {
       }
       return displayedText;
     }
-    
+
     return message.text;
   };
 
   const renderReasoningContent = (message, index) => {
-    if (!message.isR1 || !message.reasoningContent || 
+    if (!message.isR1 || !message.reasoningContent ||
         (currentTypingIndex === index && !isTypingReasoning && displayedReasoning === '')) {
       return null;
     }
@@ -311,9 +308,9 @@ const ChatInterface = () => {
           }}
         >
           <PsychologyIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} />
-          <Typography 
-            variant="caption" 
-            sx={{ 
+          <Typography
+            variant="caption"
+            sx={{
               color: '#6B7280',
               fontSize: '0.75rem',
               fontWeight: 500,
@@ -323,7 +320,7 @@ const ChatInterface = () => {
             已深度思考
           </Typography>
           <Box
-            sx={{ 
+            sx={{
               ml: 1,
               display: 'flex',
               alignItems: 'center',
@@ -333,8 +330,8 @@ const ChatInterface = () => {
               userSelect: 'none'
             }}
           >
-            {message.showReasoning ? 
-              <ExpandLessIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} /> : 
+            {message.showReasoning ?
+              <ExpandLessIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} /> :
               <ExpandMoreIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} />
             }
           </Box>
@@ -356,9 +353,9 @@ const ChatInterface = () => {
               }
             }}
           >
-            <Typography 
-              variant="body2" 
-              sx={{ 
+            <Typography
+              variant="body2"
+              sx={{
                 whiteSpace: 'pre-wrap',
                 color: '#6B7280',
                 fontSize: '0.875rem',
@@ -420,10 +417,10 @@ const ChatInterface = () => {
           <>
             {message.isR1 && renderReasoningContent(message, index)}
             {(!message.isR1 || (currentTypingIndex !== index) || (currentTypingIndex === index && isTypingReasoning)) && (
-              <Box sx={{ 
-                position: 'relative', 
-                width: '100%', 
-                display: 'flex', 
+              <Box sx={{
+                position: 'relative',
+                width: '100%',
+                display: 'flex',
                 flexDirection: 'row',
                 justifyContent: message.isUser ? 'flex-end' : 'flex-start',
               }}>
@@ -510,11 +507,11 @@ const ChatInterface = () => {
   const hasMessages = messages.length > 0;
 
   return (
-    <Box 
-      sx={{ 
-        height: '100vh', 
-        display: 'flex', 
-        flexDirection: 'column', 
+    <Box
+      sx={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
         bgcolor: '#f9fafb',
         position: 'relative',
         justifyContent: hasMessages ? 'flex-start' : 'center',
@@ -537,9 +534,9 @@ const ChatInterface = () => {
       }}
     >
       {/* 欢迎信息 */}
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
+      <Box sx={{
+        display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         position: 'relative',
         transition: 'all 0.5s ease',
@@ -552,31 +549,31 @@ const ChatInterface = () => {
           transform: 'translateY(-30%)',
         })
       }}>
-        <Box sx={{ 
-          display: 'flex', 
+        <Box sx={{
+          display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           textAlign: 'center',
           maxWidth: '600px',
         }}>
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
             gap: 2,
             mb: 2,
           }}>
-            <img 
+            <img
               src="/deepseek-color.png"
-              alt="AiChat Logo" 
-              style={{ 
+              alt="AiChat Logo"
+              style={{
                 width: hasMessages ? 32 : 48,
                 height: hasMessages ? 32 : 48,
                 transition: 'all 0.3s ease',
-              }} 
+              }}
             />
-            <Typography 
-              variant={hasMessages ? "h5" : "h4"} 
-              sx={{ 
+            <Typography
+              variant={hasMessages ? "h5" : "h4"}
+              sx={{
                 fontWeight: 500,
                 transition: 'all 0.3s ease',
               }}
@@ -584,10 +581,10 @@ const ChatInterface = () => {
               我是 AiChat，很高兴见到你!
             </Typography>
           </Box>
-          <Typography 
-            variant="body1" 
-            color="text.secondary" 
-            sx={{ 
+          <Typography
+            variant="body1"
+            color="text.secondary"
+            sx={{
               transition: 'all 0.3s ease',
               fontSize: hasMessages ? '0.875rem' : '1rem',
             }}
@@ -598,19 +595,19 @@ const ChatInterface = () => {
       </Box>
 
       {/* 聊天消息区域 */}
-      <Box sx={{ 
-        flex: 1, 
-        overflow: 'auto', 
-        px: 2, 
+      <Box sx={{
+        flex: 1,
+        overflow: 'auto',
+        px: 2,
         py: 3,
         opacity: hasMessages ? 1 : 0,
         transition: 'opacity 0.3s ease',
         display: hasMessages ? 'block' : 'none',
         overflowX: 'hidden',  // 防止水平滚动
       }}>
-        <Container 
-          maxWidth="md" 
-          sx={{ 
+        <Container
+          maxWidth="md"
+          sx={{
             margin: '0 auto',
             width: '100%',
             maxWidth: 'calc(100% - 20px)',  // 确保容器不会因为滚动条而改变宽度
@@ -622,9 +619,9 @@ const ChatInterface = () => {
       </Box>
 
       {/* 底部输入区域 */}
-      <Container 
-        maxWidth="md" 
-        sx={{ 
+      <Container
+        maxWidth="md"
+        sx={{
           p: 2,
           mt: hasMessages ? 0 : 2,
           mb: 4,  // Add margin bottom for the disclaimer
@@ -651,7 +648,7 @@ const ChatInterface = () => {
             },
           }}
         >
-          <Box sx={{ 
+          <Box sx={{
             px: 2,
             pt: 2,
             pb: 1,
@@ -681,7 +678,7 @@ const ChatInterface = () => {
               InputProps={{
                 disableUnderline: true,
               }}
-              sx={{ 
+              sx={{
                 mx: 1,
                 '& .MuiInputBase-root': {
                   bgcolor: '#f9fafb',
@@ -689,7 +686,7 @@ const ChatInterface = () => {
               }}
             />
           </Box>
-          <Box sx={{ 
+          <Box sx={{
             px: 2,
             py: 1.5,
             display: 'flex',
@@ -699,7 +696,7 @@ const ChatInterface = () => {
             <Button
               variant={deepThinking ? "contained" : "outlined"}
               size="small"
-              sx={{ 
+              sx={{
                 mr: 1,
                 borderRadius: 4,
                 bgcolor: deepThinking ? '#1d4ed8' : 'transparent',
@@ -718,7 +715,7 @@ const ChatInterface = () => {
             <Button
               variant={webSearch ? "contained" : "outlined"}
               size="small"
-              sx={{ 
+              sx={{
                 borderRadius: 4,
                 bgcolor: webSearch ? '#1d4ed8' : 'transparent',
                 '&:hover': {
@@ -749,9 +746,9 @@ const ChatInterface = () => {
                   <AddIcon sx={{ fontSize: '1.2rem' }} />
                 </IconButton>
               </Tooltip>
-              <IconButton 
+              <IconButton
                 onClick={isGenerating ? handleStopGeneration : handleSend}
-                sx={{ 
+                sx={{
                   bgcolor: isGenerating ? '#ef4444' : '#1d4ed8',
                   color: '#fff',
                   '&:hover': {
@@ -776,8 +773,8 @@ const ChatInterface = () => {
       </Container>
 
       {/* 底部固定提示文字 */}
-      <Box 
-        sx={{ 
+      <Box
+        sx={{
           position: 'fixed',
           bottom: 0,
           left: 0,
@@ -790,9 +787,9 @@ const ChatInterface = () => {
           zIndex: 1000,
         }}
       >
-        <Typography 
-          variant="caption" 
-          sx={{ 
+        <Typography
+          variant="caption"
+          sx={{
             color: '#9ca3af',
             fontSize: '0.875rem',
           }}
@@ -812,4 +809,4 @@ const ChatInterface = () => {
   );
 };
 
-export default ChatInterface; 
+export default ChatInterface;
