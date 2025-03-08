@@ -15,7 +15,6 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import StopIcon from '@mui/icons-material/Stop';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -28,10 +27,12 @@ const ChatInterface = () => {
     const savedMessages = localStorage.getItem('chatMessages');
     const savedDeepThinking = localStorage.getItem('deepThinking');
     const savedWebSearch = localStorage.getItem('webSearch');
+    const savedIsR1Small = localStorage.getItem('isR1Small');
     return {
       messages: savedMessages ? JSON.parse(savedMessages) : [],
       deepThinking: savedDeepThinking ? JSON.parse(savedDeepThinking) : false,
       webSearch: savedWebSearch ? JSON.parse(savedWebSearch) : false,
+      isR1Small: savedIsR1Small ? JSON.parse(savedIsR1Small) : false,
     };
   };
 
@@ -49,6 +50,7 @@ const ChatInterface = () => {
   const messagesEndRef = useRef(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const abortController = useRef(null);
+  const [isR1Small, setIsR1Small] = useState(initialState.isR1Small);
 
   // 保存状态到本地存储
   useEffect(() => {
@@ -62,6 +64,10 @@ const ChatInterface = () => {
   useEffect(() => {
     localStorage.setItem('webSearch', JSON.stringify(webSearch));
   }, [webSearch]);
+
+  useEffect(() => {
+    localStorage.setItem('isR1Small', JSON.stringify(isR1Small));
+  }, [isR1Small]);
 
   // 打字机效果
   useEffect(() => {
@@ -140,49 +146,6 @@ const ChatInterface = () => {
     setSnackbarOpen(true);
   };
 
-  const handleRegenerateResponse = async (index) => {
-    try {
-      const userMessage = messages[index - 1];
-      if (!userMessage || !userMessage.isUser) return;
-
-      let endpoint = 'http://localhost:3333/api/chat/';
-      if (deepThinking && webSearch) {
-        endpoint += 'deepseek-r1-bing';
-      } else if (!deepThinking && !webSearch) {
-        endpoint += 'deepseek-v3';
-      } else if (deepThinking) {
-        endpoint += 'deepseek-r1';
-      } else {
-        endpoint += 'deepseek-v3-bing';
-      }
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: userMessage.text }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        const newMessages = [...messages];
-        newMessages[index] = {
-          text: data.raw_response.choices[0].message.content,
-          isUser: false,
-          isR1: deepThinking,
-          reasoningContent: data.raw_response.choices[0].message.reasoning_content,
-          showReasoning: true,
-        };
-        setMessages(newMessages);
-        setCurrentTypingIndex(index);
-        setDisplayedText('');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
   const handleStopGeneration = () => {
     if (abortController.current) {
       abortController.current.abort();
@@ -193,9 +156,7 @@ const ChatInterface = () => {
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
 
-    // 去除末尾的空行，但保留内容中间的空行
     const processedMessage = inputMessage.replace(/\n+$/, '');
-
     const newMessages = [...messages, { text: processedMessage, isUser: true }];
     setMessages([...newMessages, { text: '', isUser: false, loading: true }]);
     setInputMessage('');
@@ -205,14 +166,12 @@ const ChatInterface = () => {
       abortController.current = new AbortController();
 
       let endpoint = 'http://localhost:3333/api/chat/';
-      if (deepThinking && webSearch) {
-        endpoint += 'deepseek-r1-search';
-      } else if (deepThinking) {
-        endpoint += 'deepseek-r1';
-      } else if (webSearch) {
-        endpoint += 'deepseek-v3-search';
+      if (!deepThinking) {
+        endpoint += webSearch ? 'deepseek-v3-search' : 'deepseek-v3';
       } else {
-        endpoint += 'deepseek-v3';
+        endpoint += isR1Small ?
+          (webSearch ? 'deepseek-r1-7b-search' : 'deepseek-r1-7b') :
+          (webSearch ? 'deepseek-r1-671b-search' : 'deepseek-r1-671b');
       }
 
       const response = await fetch(endpoint, {
@@ -220,7 +179,7 @@ const ChatInterface = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: processedMessage }),  // 使用处理后的消息
+        body: JSON.stringify({ message: processedMessage }),
         signal: abortController.current.signal
       });
 
@@ -229,13 +188,25 @@ const ChatInterface = () => {
         const aiMessage = {
           text: data.raw_response.choices[0].message.content,
           isUser: false,
-          isR1: deepThinking,
+          modelType: isR1Small ? '7b' : (deepThinking ? '671b' : 'v3'),
+          isR1: deepThinking && !isR1Small, // 只有 671B 模型才设置 isR1
           reasoningContent: data.raw_response.choices[0].message.reasoning_content,
-          showReasoning: true, // 默认展开推理内容
+          showReasoning: true,
         };
         setMessages([...newMessages, aiMessage]);
         setCurrentTypingIndex(newMessages.length);
         setDisplayedText('');
+
+        // 保持生成状态直到打字机效果结束
+        const content = aiMessage.text || '';
+        const totalLength = content.length;
+        const typingInterval = 30;
+        const totalTime = totalLength * typingInterval;
+
+        // 在打字机效果结束前保持 isGenerating 为 true
+        setTimeout(() => {
+          setIsGenerating(false);
+        }, totalTime);
       } else {
         throw new Error(data.error);
       }
@@ -246,9 +217,7 @@ const ChatInterface = () => {
         console.error('Error:', error);
         setMessages([...newMessages, { text: '发送消息失败，请重试。', isUser: false }]);
       }
-    } finally {
       setIsGenerating(false);
-      abortController.current = null;
     }
   };
 
@@ -258,33 +227,23 @@ const ChatInterface = () => {
     ));
   };
 
-  const renderMessageText = (message, index) => {
-    if (message.isUser) {
-      return message.text;
-    }
-
-    if (currentTypingIndex === index) {
-      // 如果是R1模式且正在显示推理内容，则不显示任何内容
-      if (message.isR1 && !isTypingReasoning) {
-        return null;  // 返回 null 而不是空字符串，这样会阻止渲染白框
-      }
-      return displayedText;
-    }
-
-    return message.text;
-  };
-
   const renderReasoningContent = (message, index) => {
-    if (!message.isR1 || !message.reasoningContent ||
-        (currentTypingIndex === index && !isTypingReasoning && displayedReasoning === '')) {
+    // 不再使用全局的 isR1Small 来判断是否显示推理框
+    // 而是根据消息本身的属性来判断
+    if (!message.isR1 || message.modelType === '7b') {
       return null;
     }
 
-    const reasoningContent = currentTypingIndex === index && !isTypingReasoning
-      ? displayedReasoning
-      : message.reasoningContent;
+    let reasoningContent = '';
 
-    if (!reasoningContent.trim()) {
+    if (currentTypingIndex === index && !isTypingReasoning) {
+      reasoningContent = displayedReasoning;
+    } else {
+      reasoningContent = message.reasoningContent;
+    }
+
+    // 如果没有推理内容则不显示
+    if (!reasoningContent?.trim()) {
       return null;
     }
 
@@ -319,17 +278,7 @@ const ChatInterface = () => {
           >
             已深度思考
           </Typography>
-          <Box
-            sx={{
-              ml: 1,
-              display: 'flex',
-              alignItems: 'center',
-              backgroundColor: '#F3F4F6',
-              borderRadius: '4px',
-              padding: '2px 4px',
-              userSelect: 'none'
-            }}
-          >
+          <Box sx={{/* ...existing styles... */}}>
             {message.showReasoning ?
               <ExpandLessIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} /> :
               <ExpandMoreIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} />
@@ -337,22 +286,7 @@ const ChatInterface = () => {
           </Box>
         </Box>
         <Collapse in={message.showReasoning}>
-          <Box
-            sx={{
-              position: 'relative',
-              pl: 2,
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: '2px',
-                background: '#E5E7EB',
-                borderRadius: '4px'
-              }
-            }}
-          >
+          <Box sx={{/* ...existing styles... */}}>
             <Typography
               variant="body2"
               sx={{
@@ -368,6 +302,30 @@ const ChatInterface = () => {
         </Collapse>
       </Box>
     );
+  };
+
+  const renderMessageText = (message, index) => {
+    if (message.isUser) {
+      return message.text;
+    }
+
+    if (currentTypingIndex === index) {
+      if (message.isR1 && message.modelType === '671b' && !isTypingReasoning) {
+        return null;
+      }
+      return displayedText;
+    }
+
+    // 不再使用全局的 isR1Small 来判断
+    // 而是根据消息本身的 modelType 来决定如何显示内容
+    let content = message.text || '';
+
+    // 如果是 7B 模型的消息，保留原始内容（包括 think 标签）
+    if (message.modelType === '7b') {
+      return content;
+    }
+
+    return content;
   };
 
   const renderMessage = (message, index) => (
@@ -486,14 +444,6 @@ const ChatInterface = () => {
                     onClick={() => handleCopy(message.text)}
                   >
                     <ContentCopyIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="重新生成">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleRegenerateResponse(index)}
-                  >
-                    <RefreshIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
               </Box>
@@ -694,23 +644,62 @@ const ChatInterface = () => {
             bgcolor: '#f9fafb',
           }}>
             <Button
-              variant={deepThinking ? "contained" : "outlined"}
+              variant={deepThinking && isR1Small ? "contained" : "outlined"}
               size="small"
               sx={{
                 mr: 1,
                 borderRadius: 4,
-                bgcolor: deepThinking ? '#1d4ed8' : 'transparent',
+                bgcolor: deepThinking && isR1Small ? '#1d4ed8' : 'transparent',
                 '&:hover': {
-                  bgcolor: deepThinking ? '#1e40af' : 'rgba(29, 78, 216, 0.04)',
+                  bgcolor: deepThinking && isR1Small ? '#1e40af' : 'rgba(29, 78, 216, 0.04)',
                 },
                 height: '28px',
                 textTransform: 'none',
                 fontSize: '13px',
               }}
-              onClick={() => setDeepThinking(!deepThinking)}
+              onClick={() => {
+                if (deepThinking && isR1Small) {
+                  // 如果当前是选中状态，则取消选中
+                  setDeepThinking(false);
+                  setIsR1Small(false);
+                } else {
+                  // 如果当前是未选中状态，则选中当前按钮，取消另一个按钮
+                  setDeepThinking(true);
+                  setIsR1Small(true);
+                }
+              }}
               startIcon={<PsychologyIcon sx={{ fontSize: '1.2rem' }} />}
             >
-              深度思考 (R1)
+              DeepSeek R1 (7B)
+            </Button>
+            <Button
+              variant={deepThinking && !isR1Small ? "contained" : "outlined"}
+              size="small"
+              sx={{
+                mr: 1,
+                borderRadius: 4,
+                bgcolor: deepThinking && !isR1Small ? '#1d4ed8' : 'transparent',
+                '&:hover': {
+                  bgcolor: deepThinking && !isR1Small ? '#1e40af' : 'rgba(29, 78, 216, 0.04)',
+                },
+                height: '28px',
+                textTransform: 'none',
+                fontSize: '13px',
+              }}
+              onClick={() => {
+                if (deepThinking && !isR1Small) {
+                  // 如果当前是选中状态，则取消选中
+                  setDeepThinking(false);
+                  setIsR1Small(false);
+                } else {
+                  // 如果当前是未选中状态，则选中当前按钮，取消另一个按钮
+                  setDeepThinking(true);
+                  setIsR1Small(false);
+                }
+              }}
+              startIcon={<PsychologyIcon sx={{ fontSize: '1.2rem' }} />}
+            >
+              DeepSeek R1 (671B)
             </Button>
             <Button
               variant={webSearch ? "contained" : "outlined"}
@@ -794,7 +783,7 @@ const ChatInterface = () => {
             fontSize: '0.875rem',
           }}
         >
-          内容由 AI 生成，请仔细甄别
+          内容由 AI 生成，请仔细甴别
         </Typography>
       </Box>
 
