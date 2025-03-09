@@ -20,20 +20,51 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import LanguageIcon from '@mui/icons-material/Language';
+import SearchIcon from '@mui/icons-material/Search';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import CloseIcon from '@mui/icons-material/Close';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import Link from '@mui/material/Link';
 
 const ChatInterface = () => {
-  // 从本地存储加载初始状态
+  // 修改 loadInitialState 函数，添加数据格式验证
   const loadInitialState = () => {
-    const savedMessages = localStorage.getItem('chatMessages');
-    const savedDeepThinking = localStorage.getItem('deepThinking');
-    const savedWebSearch = localStorage.getItem('webSearch');
-    const savedIsR1Small = localStorage.getItem('isR1Small');
-    return {
-      messages: savedMessages ? JSON.parse(savedMessages) : [],
-      deepThinking: savedDeepThinking ? JSON.parse(savedDeepThinking) : false,
-      webSearch: savedWebSearch ? JSON.parse(savedWebSearch) : false,
-      isR1Small: savedIsR1Small ? JSON.parse(savedIsR1Small) : false,
-    };
+    try {
+        const savedMessages = localStorage.getItem('chatMessages');
+        const savedDeepThinking = localStorage.getItem('deepThinking');
+        const savedWebSearch = localStorage.getItem('webSearch');
+        const savedIsR1Small = localStorage.getItem('isR1Small');
+
+        // 验证消息数据的格式
+        const parsedMessages = savedMessages ? JSON.parse(savedMessages) : [];
+        const validMessages = Array.isArray(parsedMessages) ? parsedMessages.map(msg => ({
+            ...msg,
+            text: String(msg.text || ''),
+            isUser: !!msg.isUser,
+            modelType: String(msg.modelType || 'v3'),
+            isR1: !!msg.isR1,
+            reasoningContent: String(msg.reasoningContent || ''),
+            showReasoning: !!msg.showReasoning
+        })) : [];
+
+        return {
+            messages: validMessages,
+            deepThinking: savedDeepThinking ? JSON.parse(savedDeepThinking) : false,
+            webSearch: savedWebSearch ? JSON.parse(savedWebSearch) : false,
+            isR1Small: savedIsR1Small ? JSON.parse(savedIsR1Small) : false,
+        };
+    } catch (error) {
+        console.error('Error loading initial state:', error);
+        return {
+            messages: [],
+            deepThinking: false,
+            webSearch: false,
+            isR1Small: false,
+        };
+    }
   };
 
   const initialState = loadInitialState();
@@ -51,6 +82,8 @@ const ChatInterface = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const abortController = useRef(null);
   const [isR1Small, setIsR1Small] = useState(initialState.isR1Small);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
 
   // 保存状态到本地存储
   useEffect(() => {
@@ -153,46 +186,143 @@ const ChatInterface = () => {
     }
   };
 
+  // 修改 handleSend 函数中处理响应的部分
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
 
     const processedMessage = inputMessage.replace(/\n+$/, '');
     const newMessages = [...messages, { text: processedMessage, isUser: true }];
-    setMessages([...newMessages, { text: '', isUser: false, loading: true }]);
+    const aiMessage = { text: '', isUser: false, loading: true };
+    setMessages([...newMessages, aiMessage]);
     setInputMessage('');
     setIsGenerating(true);
+
+    if (webSearch) {
+      const updatedMessages = [...newMessages, aiMessage];
+      const lastMessage = updatedMessages[updatedMessages.length - 1];
+      lastMessage.searching = true;
+      setMessages(updatedMessages);
+
+      // 2秒后更新搜索状态
+      setTimeout(() => {
+        lastMessage.searchCompleted = true;
+        setMessages([...updatedMessages]);
+      }, 2000);
+    }
 
     try {
       abortController.current = new AbortController();
 
       let endpoint = 'http://localhost:3333/api/chat/';
-      if (!deepThinking) {
-        endpoint += webSearch ? 'deepseek-v3-search' : 'deepseek-v3';
-      } else {
-        endpoint += isR1Small ?
-          (webSearch ? 'deepseek-r1-7b-search' : 'deepseek-r1-7b') :
-          (webSearch ? 'deepseek-r1-671b-search' : 'deepseek-r1-671b');
+      endpoint += deepThinking ?
+          (isR1Small ? 'deepseek-r1-7b' : 'deepseek-r1-671b') :
+          'deepseek-v3';
+
+      if (webSearch) {
+          endpoint += '-search';
+          console.log('发送搜索请求:', {
+              message: processedMessage,
+              endpoint: endpoint
+          });
       }
 
       const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: processedMessage }),
-        signal: abortController.current.signal
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ message: processedMessage }),
+          signal: abortController.current.signal
       });
 
       const data = await response.json();
+      if (webSearch) {
+          console.log('搜索响应结果:', {
+              success: data.success,
+              hasRawResponse: !!data.raw_response,
+              hasChoices: !!(data.raw_response?.choices),
+              messageContent: data.raw_response?.choices?.[0]?.message?.content
+          });
+      }
+
+      // 在 handleSend 函数中修改数据处理部分
       if (data.success) {
+        let messageContent = '';
+        let reasoningContent = '';
+
+        // 根据不同接口类型处理返回数据
+        if (endpoint.includes('deepseek-v3')) {
+            if (!webSearch) {
+                // deepseek-v3
+                // 直接从 data.choices 获取内容，因为 v3 返回的数据没有 raw_response 包装
+                if (data.choices?.[0]?.message?.content) {
+                    messageContent = String(data.choices[0].message.content || '');
+                    console.log('v3 content:', messageContent); // 添加日志
+                }
+            } else {
+                // v3-search 的处理保持不变
+                if (data.raw_response?.choices?.[0]?.message?.content) {
+                    messageContent = String(data.raw_response.choices[0].message.content || '');
+                }
+            }
+        } else if (endpoint.includes('deepseek-r1-671b')) {
+            // r1-671b 的处理保持不变
+            if (!webSearch) {
+                // deepseek-r1-671b
+                if (data.raw_response?.choices?.[0]?.message) {
+                    const message = data.raw_response.choices[0].message;
+                    messageContent = String(message.content || '');
+                    reasoningContent = String(message.reasoning_content || '');
+                }
+            } else {
+                // deepseek-r1-671b-search
+                if (data.raw_response?.choices?.[0]?.message?.content) {
+                    const contents = data.raw_response.choices[0].message.content;
+                    if (Array.isArray(contents)) {
+                        // 获取推理内容
+                        const reasoningItem = contents.find(item => item.type === 'reasoning');
+                        if (reasoningItem?.reasoning) {
+                            reasoningContent = String(reasoningItem.reasoning.content || '');
+                        }
+                        // 获取回答内容
+                        const textItem = contents.find(item => item.type === 'text');
+                        if (textItem?.text) {
+                            messageContent = String(textItem.text.content || '');
+                        }
+                    }
+                }
+            }
+        }
+
+        console.log('解析响应内容:', {
+            endpoint,
+            isSearch: webSearch,
+            hasContent: !!messageContent,
+            contentLength: messageContent.length,
+            messageContent: messageContent // 添加实际内容到日志
+        });
+
+        // 构建消息对象
         const aiMessage = {
-          text: data.raw_response.choices[0].message.content,
-          isUser: false,
-          modelType: isR1Small ? '7b' : (deepThinking ? '671b' : 'v3'),
-          isR1: deepThinking && !isR1Small, // 只有 671B 模型才设置 isR1
-          reasoningContent: data.raw_response.choices[0].message.reasoning_content,
-          showReasoning: true,
+            text: messageContent,
+            isUser: false,
+            modelType: isR1Small ? '7b' : (deepThinking ? '671b' : 'v3'),
+            isR1: deepThinking && !isR1Small,
+            reasoningContent: reasoningContent,
+            showReasoning: true,
+            completed: true
         };
+
+        // 处理搜索结果
+        if (webSearch) {
+            // 确保所有搜索接口都从相同位置获取搜索结果
+            if (data.raw_response?.httpResult?.data?.webPages?.value) {
+                setSearchResults(data.raw_response.httpResult.data.webPages.value);
+            } else {
+                setSearchResults([]);
+            }
+        }
+
         setMessages([...newMessages, aiMessage]);
         setCurrentTypingIndex(newMessages.length);
         setDisplayedText('');
@@ -203,13 +333,12 @@ const ChatInterface = () => {
         const typingInterval = 30;
         const totalTime = totalLength * typingInterval;
 
-        // 在打字机效果结束前保持 isGenerating 为 true
         setTimeout(() => {
-          setIsGenerating(false);
+            setIsGenerating(false);
         }, totalTime);
-      } else {
-        throw new Error(data.error);
-      }
+    } else {
+      throw new Error(data.error);
+    }
     } catch (error) {
       if (error.name === 'AbortError') {
         setMessages([...newMessages, { text: '回答已终止。', isUser: false }]);
@@ -305,28 +434,36 @@ const ChatInterface = () => {
   };
 
   const renderMessageText = (message, index) => {
-    if (message.isUser) {
-      return message.text;
+    // 确保所有返回值都是字符串，并处理可能的 undefined 或 null
+    try {
+        if (!message) {
+            return '';
+        }
+
+        if (message.isUser) {
+            return String(message.text || '');
+        }
+
+        if (currentTypingIndex === index) {
+            if (message.isR1 && message.modelType === '671b' && !isTypingReasoning) {
+                return '';
+            }
+            return String(displayedText || '');
+        }
+
+        // 如果是 7B 模型的消息，保留原始内容（包括 think 标签）
+        let content = String(message.text || '');
+
+        if (message.modelType === '7b') {
+            return content;
+        }
+
+        return content;
+    } catch (error) {
+        console.error('Error in renderMessageText:', error);
+        return ''; // 发生错误时返回空字符串
     }
-
-    if (currentTypingIndex === index) {
-      if (message.isR1 && message.modelType === '671b' && !isTypingReasoning) {
-        return null;
-      }
-      return displayedText;
-    }
-
-    // 不再使用全局的 isR1Small 来判断
-    // 而是根据消息本身的 modelType 来决定如何显示内容
-    let content = message.text || '';
-
-    // 如果是 7B 模型的消息，保留原始内容（包括 think 标签）
-    if (message.modelType === '7b') {
-      return content;
-    }
-
-    return content;
-  };
+};
 
   const renderMessage = (message, index) => (
     <Box
@@ -447,6 +584,69 @@ const ChatInterface = () => {
                   </IconButton>
                 </Tooltip>
               </Box>
+            )}
+            {message.role === 'assistant' && webSearch && (
+              <>
+                {message.searching && !message.searchCompleted && (
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    mb: 1,
+                    backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                    borderRadius: '8px',
+                    padding: '4px 8px',
+                    width: 'fit-content',
+                  }}>
+                    <SearchIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: '#6B7280',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        userSelect: 'none'
+                      }}
+                    >
+                      正在搜索...
+                    </Typography>
+                  </Box>
+                )}
+
+                {message.searchCompleted && (
+                  <Box
+                    onClick={() => message.completed && setSearchDialogOpen(true)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      mb: 1,
+                      backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                      borderRadius: '8px',
+                      padding: '4px 8px',
+                      width: 'fit-content',
+                      cursor: message.completed ? 'pointer' : 'default',
+                      opacity: message.completed ? 1 : 0.5,
+                      '&:hover': {
+                        backgroundColor: message.completed ? 'rgba(0, 0, 0, 0.05)' : 'rgba(0, 0, 0, 0.03)'
+                      }
+                    }}
+                  >
+                    <SearchIcon sx={{ fontSize: '0.875rem', color: '#6B7280' }} />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: '#6B7280',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        userSelect: 'none'
+                      }}
+                    >
+                      已搜索到10个网页
+                    </Typography>
+                  </Box>
+                )}
+              </>
             )}
           </>
         )}
@@ -636,6 +836,7 @@ const ChatInterface = () => {
               }}
             />
           </Box>
+          {/* 修改底部按钮部分的代码 */}
           <Box sx={{
             px: 2,
             py: 1.5,
@@ -656,14 +857,17 @@ const ChatInterface = () => {
                 height: '28px',
                 textTransform: 'none',
                 fontSize: '13px',
+                // 如果开启了联网搜索，则禁用按钮
+                opacity: webSearch ? 0.5 : 1,
+                pointerEvents: webSearch ? 'none' : 'auto'
               }}
               onClick={() => {
                 if (deepThinking && isR1Small) {
-                  // 如果当前是选中状态，则取消选中
+                  // 取消选中
                   setDeepThinking(false);
                   setIsR1Small(false);
                 } else {
-                  // 如果当前是未选中状态，则选中当前按钮，取消另一个按钮
+                  // 选中7B，取消671B
                   setDeepThinking(true);
                   setIsR1Small(true);
                 }
@@ -672,6 +876,7 @@ const ChatInterface = () => {
             >
               DeepSeek R1 (7B)
             </Button>
+
             <Button
               variant={deepThinking && !isR1Small ? "contained" : "outlined"}
               size="small"
@@ -688,11 +893,11 @@ const ChatInterface = () => {
               }}
               onClick={() => {
                 if (deepThinking && !isR1Small) {
-                  // 如果当前是选中状态，则取消选中
+                  // 取消选中
                   setDeepThinking(false);
                   setIsR1Small(false);
                 } else {
-                  // 如果当前是未选中状态，则选中当前按钮，取消另一个按钮
+                  // 选中671B，取消7B
                   setDeepThinking(true);
                   setIsR1Small(false);
                 }
@@ -701,6 +906,7 @@ const ChatInterface = () => {
             >
               DeepSeek R1 (671B)
             </Button>
+
             <Button
               variant={webSearch ? "contained" : "outlined"}
               size="small"
@@ -713,8 +919,23 @@ const ChatInterface = () => {
                 height: '28px',
                 textTransform: 'none',
                 fontSize: '13px',
+                // 如果选择了7B模型，则禁用联网搜索按钮
+                opacity: (deepThinking && isR1Small) ? 0.5 : 1,
+                pointerEvents: (deepThinking && isR1Small) ? 'none' : 'auto'
               }}
-              onClick={() => setWebSearch(!webSearch)}
+              onClick={() => {
+                if (webSearch) {
+                  // 取消选中
+                  setWebSearch(false);
+                } else {
+                  // 选中联网搜索，确保不选中7B
+                  setWebSearch(true);
+                  if (deepThinking && isR1Small) {
+                    setDeepThinking(false);
+                    setIsR1Small(false);
+                  }
+                }
+              }}
               startIcon={<LanguageIcon sx={{ fontSize: '1.2rem' }} />}
             >
               联网搜索
@@ -794,7 +1015,56 @@ const ChatInterface = () => {
         message={snackbarMessage}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       />
+      <SearchResultsDialog
+        open={searchDialogOpen}
+        onClose={() => setSearchDialogOpen(false)}
+        results={searchResults}
+      />
     </Box>
+  );
+};
+
+const SearchResultsDialog = ({ open, onClose, results }) => {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle>
+        搜索结果
+        <IconButton
+          aria-label="close"
+          onClick={onClose}
+          sx={{ position: 'absolute', right: 8, top: 8 }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent>
+        {results.map((result, index) => (
+          <Card key={index} sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <Link href={result.url} target="_blank" rel="noopener noreferrer">
+                  {result.name}
+                </Link>
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                来源: {result.siteName}
+              </Typography>
+              <Typography variant="body1" paragraph>
+                {result.summary}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                更新时间: {new Date(result.dateLastCrawled).toLocaleString()}
+              </Typography>
+            </CardContent>
+          </Card>
+        ))}
+      </DialogContent>
+    </Dialog>
   );
 };
 

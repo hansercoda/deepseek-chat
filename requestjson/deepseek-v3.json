@@ -1,0 +1,28 @@
+{
+    "id": "737f69d1-782b-4be4-8319-46eeadbcf521",
+    "object": "chat.completion",
+    "created": 1741512527,
+    "model": "deepseek-chat",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "Manus 是一家专注于机器人技术和人工智能的公司，主要开发用于机器人手臂和自动化系统的先进控制技术和软件平台。Manus 的产品广泛应用于工业自动化、医疗、物流和服务机器人等领域。他们的技术旨在提高机器人的灵活性、精确性和智能化水平，使其能够更好地适应复杂和多变的任务环境。\n\n如果你有关于 Manus 的具体问题或需要更多详细信息，请告诉我！"
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 14,
+        "completion_tokens": 78,
+        "total_tokens": 92,
+        "prompt_tokens_details": {
+            "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 14
+    },
+    "system_fingerprint": "fp_3a5770e1b4_prod0225"
+}
