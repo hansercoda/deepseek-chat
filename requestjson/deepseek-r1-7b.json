@@ -1,0 +1,21 @@
+{
+    "id": "chatcmpl-37931eb53c084d7e8b87ec4b67fa697c",
+    "model": "deepseek-r1:7b",
+    "object": "chat.completion",
+    "created": 1741518094,
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "<think>\n\n</think>\n\n您好！我是由中国的深度求索（DeepSeek）公司开发的智能助手DeepSeek-R1。如您有任何任何问题，我会尽我所能为您提供帮助。"
+            },
+            "finish_reason": "stop"
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 6,
+        "completion_tokens": 40,
+        "total_tokens": 46
+    }
+}

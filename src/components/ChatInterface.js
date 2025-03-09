@@ -250,8 +250,17 @@ const ChatInterface = () => {
         let messageContent = '';
         let reasoningContent = '';
 
-        // 根据不同接口类型处理返回数据
-        if (endpoint.includes('deepseek-v3')) {
+        // 添加对 r1-7b 的专门处理
+        if (endpoint.includes('deepseek-r1-7b')) {
+            if (data.raw_response?.choices?.[0]?.message?.content) {
+                messageContent = String(data.raw_response.choices[0].message.content || '');
+            }
+            console.log('R1-7B response:', {
+                hasContent: !!messageContent,
+                contentLength: messageContent.length,
+                messageContent: messageContent
+            });
+        } else if (endpoint.includes('deepseek-v3')) {
             if (!webSearch) {
                 // deepseek-v3
                 // 直接从 data.choices 获取内容，因为 v3 返回的数据没有 raw_response 包装
